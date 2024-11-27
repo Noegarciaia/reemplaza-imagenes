@@ -1,11 +1,14 @@
-from docx import Document
 import os
-from tkinter import Tk, Label, Button, filedialog, Frame
+import win32com.client
+import pywintypes  # Agregar esta importación
+from docx import Document  # Asegúrate de que esta línea esté presente
+from tkinter import Tk, Label, Button, filedialog, Frame, Listbox, Scrollbar
 from PIL import Image, ImageTk
 
 # Variables globales
 imagenes_referencia_paths = []  # Lista para almacenar las rutas de las imágenes de referencia
 asociaciones = {}  # Diccionario para almacenar las asociaciones (imagen de referencia -> nueva imagen)
+archivos_pdf_generados = []  # Lista para almacenar los nombres de los archivos PDF generados
 
 def seleccionar_imagenes_referencia():
     """Abre un cuadro de diálogo para seleccionar múltiples imágenes de referencia."""
@@ -56,7 +59,7 @@ def seleccionar_nueva_imagen(imagen_referencia, frame_imagen):
         img_new_tk = ImageTk.PhotoImage(img_new)
 
         label_preview_new = frame_imagen.grid_slaves(row=0, column=2)[0]
-        label_preview_new.config(image=img_new_tk, text="")
+        label_preview_new.config(image=img_new_tk, text="")  # Actualizamos la imagen
         label_preview_new.image = img_new_tk
 
         label_resultado.config(text=f"Asociación: {os.path.basename(imagen_referencia)} -> {os.path.basename(nueva_imagen_path)}", fg="green")
@@ -83,7 +86,7 @@ def reemplazar_imagenes():
 
 def reemplazar_en_documento(doc_path):
     """Aplica todas las asociaciones en un documento."""
-    doc = Document(doc_path)
+    doc = Document(doc_path)  # Esto usará la clase Document importada
     relations = doc.part.rels
     reemplazo_realizado = False
 
@@ -107,6 +110,66 @@ def reemplazar_en_documento(doc_path):
         nuevo_doc_path = os.path.join(carpeta_modificados, os.path.basename(doc_path))
         doc.save(nuevo_doc_path)
 
+def convertir_documentos_a_pdf():
+    """Convierte todos los documentos en 'archivos_modificados' a PDF y guarda los PDFs en una subcarpeta 'pdf'."""
+    carpeta_modificados = os.path.abspath('archivos_modificados')  # Convertir a ruta absoluta
+    carpeta_pdf = os.path.join(carpeta_modificados, 'pdf')
+
+    # Crear la carpeta 'pdf' si no existe
+    if not os.path.exists(carpeta_pdf):
+        os.makedirs(carpeta_pdf)
+
+    word = win32com.client.Dispatch('Word.Application')
+
+    # Verificar si la carpeta existe
+    if not os.path.exists(carpeta_modificados):
+        print(f"La carpeta {carpeta_modificados} no existe.")
+        return
+
+    global archivos_pdf_generados
+    archivos_pdf_generados = []  # Limpiar lista antes de agregar nuevos archivos
+
+    for archivo in os.listdir(carpeta_modificados):
+        if archivo.endswith('.docx'):
+            doc_path = os.path.join(carpeta_modificados, archivo)
+
+            # Verificar si el archivo existe
+            if not os.path.exists(doc_path):
+                print(f"El archivo no existe: {doc_path}")
+                continue  # Saltar al siguiente archivo
+
+            try:
+                # Log de la ruta completa donde se va a intentar abrir el archivo
+                print(f"Intentando abrir el archivo en la ruta: {doc_path}")
+                
+                doc = word.Documents.Open(doc_path)
+                output_pdf = os.path.join(carpeta_pdf, os.path.splitext(archivo)[0] + '.pdf')
+
+                # Guardar como PDF
+                doc.SaveAs(output_pdf, FileFormat=17)  # 17 es el formato PDF en Word
+                doc.Close()
+                print(f"Documento convertido a PDF: {output_pdf}")
+
+                # Agregar solo el nombre del archivo PDF (sin la ruta)
+                archivos_pdf_generados.append(os.path.basename(output_pdf))
+            except Exception as e:
+                print(f"Error al convertir el archivo {doc_path}: {str(e)}")
+                # Si la ruta es incorrecta o el archivo no se puede abrir, también imprimimos el error
+                if isinstance(e, pywintypes.com_error):
+                    print(f"Ruta intentada para abrir el archivo: {doc_path}")
+                continue
+
+    # Actualizar la lista de archivos PDF generados en la interfaz
+    actualizar_lista_pdf()
+
+    label_resultado.config(text="Conversión a PDF completada.", fg="green")
+
+def actualizar_lista_pdf():
+    """Actualiza la lista de archivos PDF generados en el Listbox."""
+    listbox_pdf.delete(0, 'end')  # Limpiar la lista
+    for archivo_pdf in archivos_pdf_generados:
+        listbox_pdf.insert('end', archivo_pdf)
+
 # Interfaz gráfica
 root = Tk()
 root.title("Reemplazar Imágenes en Documentos Word")
@@ -126,7 +189,30 @@ frame_imagenes.pack(pady=10)
 boton_reemplazar = Button(root, text="Reemplazar Imágenes", command=reemplazar_imagenes, bg="blue", fg="white")
 boton_reemplazar.pack(pady=20)
 
+boton_pdf = Button(root, text="Generar PDF de Todos los Archivos Modificados", command=convertir_documentos_a_pdf, bg="green", fg="white")
+boton_pdf.pack(pady=20)
+
 label_resultado = Label(root, text="")
 label_resultado.pack(pady=10)
+
+# Frame para el Listbox de los archivos PDF generados
+listbox_pdf_frame = Frame(root)
+listbox_pdf_frame.pack(pady=10)
+
+# Título para el Listbox
+label_pdf_titulo = Label(listbox_pdf_frame, text="Archivos PDF generados", font=("Arial", 12))
+label_pdf_titulo.pack()
+
+# Listbox con scroll vertical y horizontal
+listbox_pdf = Listbox(listbox_pdf_frame, height=10, width=50, selectmode='single')
+listbox_pdf.pack(side="left", fill="y")
+
+scrollbar_pdf_y = Scrollbar(listbox_pdf_frame, orient="vertical", command=listbox_pdf.yview)
+scrollbar_pdf_y.pack(side="right", fill="y")
+
+scrollbar_pdf_x = Scrollbar(listbox_pdf_frame, orient="horizontal", command=listbox_pdf.xview)
+scrollbar_pdf_x.pack(side="bottom", fill="x")
+
+listbox_pdf.config(yscrollcommand=scrollbar_pdf_y.set, xscrollcommand=scrollbar_pdf_x.set)
 
 root.mainloop()
