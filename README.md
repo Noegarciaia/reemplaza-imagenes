@@ -1,0 +1,4 @@
+- Buscar un archivo word para extrar imagenes, pegarlo en la carpeta donde están los archivos python y renombrarlo como "extractor"
+- Ejecutar: python extraer-imagenes.py yse va a generar una carpeta llamada "imagenes_extraidas"
+- De la carpeta se pueden seleccionar las imagenes que queremos que sean reemplazadas.
+- Ejecutar "iniciar"
